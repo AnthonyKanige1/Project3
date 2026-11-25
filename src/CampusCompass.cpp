@@ -85,7 +85,22 @@ bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
 }
 
 
+    bool CampusCompass::ParseCommand(const std::string& command) {
+    std::istringstream input(command);
+    std::string action;
+    input >> action;
 
-    // Add branches for the remaining assignment commands here.
+    if (action == "checkEdgeStatus") {
+        std::string fromText, toText, extra;
+        int from, to;
+        if ((input >> fromText >> toText) && !(input >> extra) &&
+            ReadInteger(fromText, from) && ReadInteger(toText, to)) {
+            std::cout << campus.EdgeStatus(from, to) << '\n';
+            return true;
+        }
+    }
+    std::cout << "unsuccessful\n";
+    return false;
+   
     
 }
