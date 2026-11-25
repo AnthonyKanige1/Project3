@@ -1,25 +1,25 @@
-#include <iostream>
-
 #include "CampusCompass.h"
 
-using namespace std;
+#include <iostream>
+#include <string>
 
 int main() {
-    // initialize your main project object
     CampusCompass compass;
+    if (!compass.ParseCSV("data/edges.csv", "data/classes.csv")) {
+        std::cerr << "Could not load data/edges.csv or data/classes.csv.\n";
+        return 1;
+    }
 
-    // ingest CSV data
-    compass.ParseCSV("data/edges.csv", "data/classes.csv");
-
-    // the below is example code for parsing commandline input
-    int no_of_lines;
-    string command;
-    cin >> no_of_lines;
-    cin.ignore(); // ignore newline that first cin left over
-    for (int i = 0; i < no_of_lines; i++) {
-        getline(cin, command);
-
-        // parse your commands however you see fit
-        compass.ParseCommand(command);
+    // The assignment gives a valid command count on its own line.
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        return 1;
+    }
+    const int commandCount = std::stoi(line);
+    for (int i = 0; i < commandCount; ++i) {
+        if (!std::getline(std::cin, line)) {
+            return 1;
+        }
+        compass.ParseCommand(line);
     }
 }
