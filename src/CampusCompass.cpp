@@ -155,6 +155,45 @@ std::string Graph::EdgeStatus(int from, int to) const {
     return roads[found->second].open ? "open" : "closed";
 }
 
+bool Graph::ToggleEdgesClosure(const std::vector<std::pair<int, int>>& endpoints) {
+    std::set<std::size_t> indices;
+    for (const auto& edge : endpoints) {
+        const auto found = roadIndex.find(RoadKey(edge.first, edge.second));
+        if (found == roadIndex.end() || !indices.insert(found->second).second) {
+            return false;
+        }
+    }
+    // validate the whole batch before changing either direction of any road.
+    for (const std::size_t index : indices) {
+        roads[index].open = !roads[index].open;
+    }
+    return !indices.empty();
+}
+
+bool Graph::IsConnected(int from, int to) const {
+    if (!HasLocation(from) || !HasLocation(to)) {
+        return false;
+    }
+    std::queue<int> pending;
+    std::set<int> visited{from};
+    pending.push(from);
+    while (!pending.empty()) {
+        const int current = pending.front();
+        pending.pop();
+        if (current == to) {
+            return true;
+        }
+        for (const std::size_t index : neighbors.at(current)) {
+            const Road& road = roads[index];
+            const int next = OtherEnd(road, current);
+            if (road.open && visited.insert(next).second) {
+                pending.push(next);
+            }
+        }
+    }
+    return false;
+}
+
 bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
                              const std::string& classesFilepath) {
     std::ifstream edgesFile(edgesFilepath);
@@ -336,15 +375,37 @@ bool CampusCompass::ParseCommand(const std::string& command, std::ostream& outpu
         return true;
     }
 
-    if (action == "checkEdgeStatus") {
+    if (action == "toggleEdgesClosure") {
+        std::string countText;
+        int count = 0;
+        if (!(input >> countText) || !ReadInteger(countText, count) || count < 1) {
+            return Status(false, output);
+        }
+        std::vector<std::pair<int, int>> endpoints;
+        for (int i = 0; i < count; ++i) {
+            std::string fromText, toText;
+            int from = 0, to = 0;
+            if (!(input >> fromText >> toText) || !ReadInteger(fromText, from) ||
+                !ReadInteger(toText, to)) {
+                return Status(false, output);
+            }
+            endpoints.push_back({from, to});
+        }
+        return Status(AtEnd(input) && campus.ToggleEdgesClosure(endpoints), output);
+    }
+
+    if (action == "checkEdgeStatus" || action == "isConnected") {
         std::string fromText, toText;
         int from = 0, to = 0;
         if (!(input >> fromText >> toText) || !AtEnd(input) ||
             !ReadInteger(fromText, from) || !ReadInteger(toText, to)) {
             return Status(false, output);
         }
-        output << campus.EdgeStatus(from, to) << '\n';
-        return true;
+        if (action == "checkEdgeStatus") {
+            output << campus.EdgeStatus(from, to) << '\n';
+            return true;
+        }
+        return Status(campus.IsConnected(from, to), output);
     }
     return Status(false, output);
 }
