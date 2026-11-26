@@ -411,6 +411,36 @@ void CampusCompass::PrintStudentZone(const Student& student, std::ostream& outpu
            << campus.StudentZoneCost(student.residence, destinations) << '\n';
 }
 
+bool CampusCompass::VerifySchedule(const Student& student, std::ostream& output) const {
+    if (student.classes.size() < 2) {
+        return Status(false, output);
+    }
+    std::vector<std::pair<std::string, Course>> schedule;
+    for (const auto& code : student.classes) {
+        schedule.push_back({code, courses.at(code)});
+    }
+    std::sort(schedule.begin(), schedule.end(), [](const auto& left, const auto& right) {
+        if (left.second.start != right.second.start) {
+            return left.second.start < right.second.start;
+        }
+        return left.first < right.first;
+    });
+    output << "Schedule Check for " << student.name << ":\n";
+    bool feasible = true;
+    for (std::size_t i = 1; i < schedule.size(); ++i) {
+        const auto& earlier = schedule[i - 1];
+        const auto& later = schedule[i];
+        const Graph::Paths paths = campus.ShortestPaths(earlier.second.location);
+        const auto distance = paths.distance.find(later.second.location);
+        const bool reachable = distance != paths.distance.end() &&
+                               distance->second <= later.second.start - earlier.second.end;
+        output << earlier.first << " - " << later.first << ": ";
+        Status(reachable, output);
+        feasible = reachable && feasible;
+    }
+    return feasible;
+}
+
 bool CampusCompass::ParseCommand(const std::string& command) {
     return ParseCommand(command, std::cout);
 }
@@ -505,7 +535,7 @@ bool CampusCompass::ParseCommand(const std::string& command, std::ostream& outpu
         return Status(campus.IsConnected(from, to), output);
     }
 
-    if (action == "printShortestEdges" || action == "printStudentZone") {
+    if (action == "printShortestEdges" || action == "printStudentZone" || action == "verifySchedule") {
         std::string id;
         if (!(input >> id) || !AtEnd(input) || !ValidID(id)) {
             return Status(false, output);
@@ -516,8 +546,10 @@ bool CampusCompass::ParseCommand(const std::string& command, std::ostream& outpu
         }
         if (action == "printShortestEdges") {
             PrintShortestEdges(student->second, output);
-        } else {
+        } else if (action == "printStudentZone") {
             PrintStudentZone(student->second, output);
+        } else {
+            return VerifySchedule(student->second, output);
         }
         return true;
     }
