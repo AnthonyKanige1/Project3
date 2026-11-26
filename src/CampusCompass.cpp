@@ -254,7 +254,7 @@ Graph::Time Graph::StudentZoneCost(int residence, const std::vector<int>& destin
     pending.push({0, residence});
     Time total = 0;
     while (!pending.empty()) {
-        const auto [weight, current] = pending.top();
+        const auto [weight, current] =pending.top();
         pending.pop();
         if (!visited.insert(current).second) {
             continue;
@@ -276,7 +276,7 @@ bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
     std::ifstream edgesFile(edgesFilepath);
     std::ifstream classesFile(classesFilepath);
     std::string line;
-    if (!std::getline(edgesFile, line) || !std::getline(classesFile, line)) {
+    if (!std::getline(edgesFile,line) || !std::getline(classesFile, line)) {
         return false;
     }
     Graph loadedCampus;
@@ -286,10 +286,7 @@ bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
             continue;
         }
         int from = 0, to = 0, minutes = 0;
-        if (!ReadCSVRow(line, fields) || fields.size() != 5 ||
-            !ReadInteger(fields[0], from) || !ReadInteger(fields[1], to) ||
-            !ReadInteger(fields[4], minutes) ||
-            !loadedCampus.AddRoad(from, to, minutes, fields[2], fields[3])) {
+        if (!ReadCSVRow(line, fields) || fields.size() != 5 || !ReadInteger(fields[0], from) || !ReadInteger(fields[1], to) ||!ReadInteger(fields[4], minutes) ||!loadedCampus.AddRoad(from, to, minutes, fields[2], fields[3])) {
             return false;
         }
     }
@@ -299,11 +296,7 @@ bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
             continue;
         }
         Course course{};
-        if (!ReadCSVRow(line, fields) || fields.size() != 4 || !ValidCode(fields[0]) ||
-            !ReadInteger(fields[1], course.location) ||
-            !loadedCampus.HasLocation(course.location) ||
-            !ReadTime(fields[2], course.start) || !ReadTime(fields[3], course.end) ||
-            course.end < course.start || !loadedCourses.emplace(fields[0], course).second) {
+        if (!ReadCSVRow(line, fields) || fields.size() != 4 || !ValidCode(fields[0]) ||!ReadInteger(fields[1], course.location) || !loadedCampus.HasLocation(course.location) || !ReadTime(fields[2],course.start) || !ReadTime(fields[3], course.end) ||course.end < course.start || !loadedCourses.emplace(fields[0], course).second) {
             return false;
         }
     }
@@ -321,10 +314,8 @@ bool CampusCompass::HasCourse(const std::string& code) const {
     return ValidCode(code) && courses.count(code) != 0;
 }
 
-bool CampusCompass::Insert(const std::string& name, const std::string& id, int residence,
-                           const std::vector<std::string>& codes) {
-    if (!ValidName(name) || !ValidID(id) || students.count(id) != 0 ||
-        !campus.HasLocation(residence) || codes.empty() || codes.size() > 6) {
+bool CampusCompass::Insert(const std::string& name, const std::string& id, int residence, const std::vector<std::string>& codes) {
+    if (!ValidName(name) || !ValidID(id) || students.count(id) != 0 || !campus.HasLocation(residence)|| codes.empty()|| codes.size() > 6) {
         return false;
     }
     std::set<std::string> unique;
@@ -338,7 +329,7 @@ bool CampusCompass::Insert(const std::string& name, const std::string& id, int r
 }
 
 bool CampusCompass::Remove(const std::string& id) {
-    return students.erase(id) != 0;
+    return students.erase(id)!= 0;
 }
 
 bool CampusCompass::DropClass(const std::string& id, const std::string& code) {
@@ -347,7 +338,7 @@ bool CampusCompass::DropClass(const std::string& id, const std::string& code) {
         return false;
     }
     auto& codes = student->second.classes;
-    const auto enrolled = std::find(codes.begin(), codes.end(), code);
+    const auto enrolled =std::find(codes.begin(), codes.end(), code);
     if (enrolled == codes.end()) {
         return false;
     }
@@ -358,15 +349,14 @@ bool CampusCompass::DropClass(const std::string& id, const std::string& code) {
     return true;
 }
 
-bool CampusCompass::ReplaceClass(const std::string& id, const std::string& oldCode,
-                                 const std::string& newCode) {
+bool CampusCompass::ReplaceClass(const std::string& id,const std::string& oldCode, const std::string& newCode) {
     const auto student = students.find(id);
     if (student == students.end() || !HasCourse(oldCode) || !HasCourse(newCode)) {
         return false;
     }
     auto& codes = student->second.classes;
     const auto enrolled = std::find(codes.begin(), codes.end(), oldCode);
-    if (enrolled == codes.end() || std::find(codes.begin(), codes.end(), newCode) != codes.end()) {
+    if (enrolled == codes.end()|| std::find(codes.begin(), codes.end(), newCode) != codes.end()) {
         return false;
     }
     *enrolled = newCode;
@@ -395,7 +385,7 @@ void CampusCompass::PrintShortestEdges(const Student& student, std::ostream& out
     const Graph::Paths paths = campus.ShortestPaths(student.residence);
     auto codes = student.classes;
     std::sort(codes.begin(), codes.end());
-    output << "Time For Shortest Edges: " << student.name << '\n';
+    output << "Time For Shortest Edges: "<< student.name << '\n';
     for (const auto& code : codes) {
         const auto distance = paths.distance.find(courses.at(code).location);
         output << code << ": " << (distance == paths.distance.end() ? -1 : distance->second) << '\n';
