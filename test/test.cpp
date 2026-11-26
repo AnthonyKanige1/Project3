@@ -1,84 +1,77 @@
+#ifdef CAMPUS_BUNDLED_CATCH
+#include "catch/catch_amalgamated.hpp"
+#else
 #include <catch2/catch_test_macros.hpp>
-#include <iostream>
+#endif
 
-// change if you choose to use a different header name
 #include "CampusCompass.h"
+#include <sstream>
+#include <string>
+#include <vector>
 
-using namespace std;
+namespace {
+std::string Run(CampusCompass& compass, const std::string& command) {
+    std::ostringstream output;
+    compass.ParseCommand(command, output);
+    return output.str();
+}
+} // namespace
 
-// the syntax for defining a test is below. It is important for the name to be
-// unique, but you can group multiple tests with [tags]. A test can have
-// [multiple][tags] using that syntax.
-TEST_CASE("Example Test Name - Change me!", "[tag]") {
-  // instantiate any class members that you need to test here
-  int one = 1;
-
-  // anything that evaluates to false in a REQUIRE block will result in a
-  // failing test
-  REQUIRE(one == 0); // fix me!
-
-  // all REQUIRE blocks must evaluate to true for the whole test to pass
-  REQUIRE(false); // also fix me!
+TEST_CASE("Rubric 1 - invalid commands leave no partial records", "[rubric]") {
+    CampusCompass compass;
+    REQUIRE(compass.ParseCSV("data/edges.csv", "data/classes.csv"));
+    const std::vector<std::string> invalid{
+        "insert \"A11y\" 45679999 1 1 COP3530",
+        "insert \"Brandon\" 4567999 20 1 COP3530",
+        "insert \"Brandon\" 45679999 20 1 cop3530",
+        "insert \"Brandon\" 45679999 20 2 COP3530",
+        "remov 45679999",
+        "insert \"Brandon\" 45679999 20 1 ZZZ9999"
+    };
+    for (const auto& command : invalid) {
+        INFO(command);
+        REQUIRE(Run(compass, command) == "unsuccessful\n");
+    }
+    REQUIRE(Run(compass, "insert \"Brandon\" 45679999 20 1 COP3530") == "successful\n");
 }
 
-TEST_CASE("Test 2", "[tag]") {
-  // you can also use "sections" to share setup code between tests, for example:
-  int one = 1;
-
-  SECTION("num is 2") {
-    int num = one + 1;
-    REQUIRE(num == 2);
-  };
-
-  SECTION("num is 3") {
-    int num = one + 2;
-    REQUIRE(num == 3);
-  };
-
-  // each section runs the setup code independently to ensure that they don't
-  // affect each other
+TEST_CASE("Rubric 2 - edge cases across student functions", "[rubric]") {
+    CampusCompass compass;
+    REQUIRE(compass.ParseCSV("data/edges.csv", "data/classes.csv"));
+    REQUIRE(Run(compass, "remove 12345678") == "unsuccessful\n");
+    REQUIRE(Run(compass, "insert \"Brian\" 35459999 21 1 MAC2311") == "successful\n");
+    REQUIRE(Run(compass, "dropClass 35459999 MAC2311") == "successful\n");
+    REQUIRE(Run(compass, "remove 35459999") == "unsuccessful\n");
+    REQUIRE(Run(compass, "removeClass COP3530") == "unsuccessful\n");
 }
 
-// Refer to Canvas for a list of required tests. 
-// We encourage you to write more than required to ensure proper functionality, but only the ones on Canvas will be graded.
+TEST_CASE("Rubric 3 - replace drop removeClass and remove", "[rubric]") {
+    CampusCompass compass;
+    REQUIRE(compass.ParseCSV("data/edges.csv", "data/classes.csv"));
+    REQUIRE(Run(compass, "insert \"Brandon\" 45679999 20 2 COP3530 MAC2311") == "successful\n");
+    REQUIRE(Run(compass, "insert \"Brian\" 35459999 21 3 COP3530 CDA3101 MAC2311") == "successful\n");
+    REQUIRE(Run(compass, "replaceClass 45679999 MAC2311 CDA3101") == "successful\n");
+    REQUIRE(Run(compass, "dropClass 35459999 COP3530") == "successful\n");
+    REQUIRE(Run(compass, "removeClass CDA3101") == "2\n");
+    REQUIRE(Run(compass, "printShortestEdges 45679999") ==
+            "Time For Shortest Edges: Brandon\nCOP3530: 20\n");
+    REQUIRE(Run(compass, "printShortestEdges 35459999") ==
+            "Time For Shortest Edges: Brian\nMAC2311: 11\n");
+    REQUIRE(Run(compass, "remove 35459999") == "successful\n");
+    REQUIRE(Run(compass, "remove 35459999") == "unsuccessful\n");
+}
 
-// See the following for an example of how to easily test your output.
-// Note that while this works, I recommend also creating plenty of unit tests for particular functions within your code.
-// This pattern should only be used for final, end-to-end testing.
-
-// This uses C++ "raw strings" and assumes your CampusCompass outputs a string with
-//   the same thing you print.
-TEST_CASE("Example CampusCompass Output Test", "[flag]") {
-  // the following is a "raw string" - you can write the exact input (without
-  //   any indentation!) and it should work as expected
-  // this is based on the input and output of the first public test case
-  string input = R"(6
-insert "Student A" 10000001 1 1 COP3502
-insert "Student B" 10000002 1 1 COP3502
-insert "Student C" 10000003 1 2 COP3502 MAC2311
-dropClass 10000001 COP3502
-remove 10000001
-removeClass COP3502
-)";
-
-  string expectedOutput = R"(successful
-successful
-successful
-successful
-unsuccessful
-2
-)";
-
-  string actualOutput;
-
-  // somehow pass your input into your CampusCompass and parse it to call the
-  // correct functions, for example:
-  /*
-  CampusCompass c;
-  c.parseInput(input)
-  // this would be some function that sends the output from your class into a string for use in testing
-  actualOutput = c.getStringRepresentation()
-  */
-
-  REQUIRE(actualOutput == expectedOutput);
+TEST_CASE("Rubric 4 - closures make a reachable class unreachable", "[rubric]") {
+    CampusCompass compass;
+    REQUIRE(compass.ParseCSV("data/edges.csv", "data/classes.csv"));
+    REQUIRE(Run(compass, "insert \"Brian\" 35459999 21 1 MAC2311") == "successful\n");
+    REQUIRE(Run(compass, "printShortestEdges 35459999") ==
+            "Time For Shortest Edges: Brian\nMAC2311: 11\n");
+    // the supplied edges.csv has exactly two roads incident to location 21.
+    REQUIRE(Run(compass, "toggleEdgesClosure 2 12 21 21 22") == "successful\n");
+    REQUIRE(Run(compass, "printShortestEdges 35459999") ==
+            "Time For Shortest Edges: Brian\nMAC2311: -1\n");
+    REQUIRE(Run(compass, "toggleEdgesClosure 2 21 12 22 21") == "successful\n");
+    REQUIRE(Run(compass, "printShortestEdges 35459999") ==
+            "Time For Shortest Edges: Brian\nMAC2311: 11\n");
 }
