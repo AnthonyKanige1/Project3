@@ -194,6 +194,83 @@ bool Graph::IsConnected(int from, int to) const {
     return false;
 }
 
+Graph::Paths Graph::ShortestPaths(int source) const {
+    Paths paths;
+    if (!HasLocation(source)) {
+        return paths;
+    }
+    using Entry = std::pair<Time, int>;
+    std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> pending;
+    paths.distance[source] = 0;
+    pending.push({0, source});
+    while (!pending.empty()) {
+        const auto [distance, current] = pending.top();
+        pending.pop();
+        if (distance != paths.distance.at(current)) {
+            continue;
+        }
+        for (const std::size_t index : neighbors.at(current)) {
+            const Road& road = roads[index];
+            if (!road.open) {
+                continue;
+            }
+            const int next = OtherEnd(road, current);
+            const Time candidate = distance + road.minutes;
+            const auto known = paths.distance.find(next);
+            // keep the first shortest route on ties; strict improvement also
+            // prevents predecessor cycles when roads have zero walking time.
+            if (known == paths.distance.end() || candidate < known->second) {
+                paths.distance[next] = candidate;
+                paths.previous[next] = current;
+                pending.push({candidate, next});
+            }
+        }
+    }
+    return paths;
+}
+
+Graph::Time Graph::StudentZoneCost(int residence, const std::vector<int>& destinations) const {
+    const Paths paths = ShortestPaths(residence);
+    if (paths.distance.empty()) {
+        return 0;
+    }
+    std::set<int> selected{residence};
+    for (const int destination : destinations) {
+        if (paths.distance.count(destination) == 0) {
+            continue;
+        }
+        int current = destination;
+        // stop at an already traced suffix of a route to the residence.
+        while (selected.insert(current).second) {
+            current = paths.previous.at(current);
+        }
+    }
+
+    // Prim's algorithm on the induced open subgraph. Examining all incident
+    // roads includes cross-edges absent from the chosen shortest-path tree.
+    using Entry = std::pair<int, int>;
+    std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> pending;
+    std::set<int> visited;
+    pending.push({0, residence});
+    Time total = 0;
+    while (!pending.empty()) {
+        const auto [weight, current] = pending.top();
+        pending.pop();
+        if (!visited.insert(current).second) {
+            continue;
+        }
+        total += weight;
+        for (const std::size_t index : neighbors.at(current)) {
+            const Road& road = roads[index];
+            const int next = OtherEnd(road, current);
+            if (road.open && selected.count(next) != 0 && visited.count(next) == 0) {
+                pending.push({road.minutes, next});
+            }
+        }
+    }
+    return total;
+}
+
 bool CampusCompass::ParseCSV(const std::string& edgesFilepath,
                              const std::string& classesFilepath) {
     std::ifstream edgesFile(edgesFilepath);
@@ -314,6 +391,26 @@ std::size_t CampusCompass::RemoveClass(const std::string& code) {
     return affected;
 }
 
+void CampusCompass::PrintShortestEdges(const Student& student, std::ostream& output) const {
+    const Graph::Paths paths = campus.ShortestPaths(student.residence);
+    auto codes = student.classes;
+    std::sort(codes.begin(), codes.end());
+    output << "Time For Shortest Edges: " << student.name << '\n';
+    for (const auto& code : codes) {
+        const auto distance = paths.distance.find(courses.at(code).location);
+        output << code << ": " << (distance == paths.distance.end() ? -1 : distance->second) << '\n';
+    }
+}
+
+void CampusCompass::PrintStudentZone(const Student& student, std::ostream& output) const {
+    std::vector<int> destinations;
+    for (const auto& code : student.classes) {
+        destinations.push_back(courses.at(code).location);
+    }
+    output << "Student Zone Cost For " << student.name << ": "
+           << campus.StudentZoneCost(student.residence, destinations) << '\n';
+}
+
 bool CampusCompass::ParseCommand(const std::string& command) {
     return ParseCommand(command, std::cout);
 }
@@ -406,6 +503,23 @@ bool CampusCompass::ParseCommand(const std::string& command, std::ostream& outpu
             return true;
         }
         return Status(campus.IsConnected(from, to), output);
+    }
+
+    if (action == "printShortestEdges" || action == "printStudentZone") {
+        std::string id;
+        if (!(input >> id) || !AtEnd(input) || !ValidID(id)) {
+            return Status(false, output);
+        }
+        const auto student = students.find(id);
+        if (student == students.end()) {
+            return Status(false, output);
+        }
+        if (action == "printShortestEdges") {
+            PrintShortestEdges(student->second, output);
+        } else {
+            PrintStudentZone(student->second, output);
+        }
+        return true;
     }
     return Status(false, output);
 }
