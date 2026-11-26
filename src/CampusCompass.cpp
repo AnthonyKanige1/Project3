@@ -17,8 +17,13 @@ bool IsLetter(char c) {
 }
 
 bool ReadInteger(const std::string& text, int& value) {
-    if (text.empty() || !std::all_of(text.begin(), text.end(), IsDigit)) {
+    if (text.empty()) {
         return false;
+    }
+    for (const char digit: text) {
+        if (!IsDigit(digit)) {
+            return false;
+        }
     }
     const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
     return result.ec == std::errc{} && result.ptr == text.data() + text.size();
@@ -29,17 +34,32 @@ bool ValidID(const std::string& id) {
 }
 
 bool ValidName(const std::string& name) {
-    return std::any_of(name.begin(), name.end(), IsLetter) &&
-           std::all_of(name.begin(), name.end(), [](char c) {
-               return IsLetter(c) || c == ' ';
-           });
+    bool hasLetter=false;
+    for (const char character : name) {
+        if (IsLetter(character)) {
+            hasLetter = true;
+        } else if (character != ' ') {
+            return false;
+        }
+    }
+    return hasLetter;
 }
 
 bool ValidCode(const std::string& code) {
-    return code.size() == 7 &&
-           std::all_of(code.begin(), code.begin() + 3,
-                       [](char c) { return c >= 'A' && c <= 'Z'; }) &&
-           std::all_of(code.begin() + 3, code.end(), IsDigit);
+    if (code.size() != 7) {
+        return false;
+    }
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (code[i] < 'A' || code[i] > 'Z') {
+            return false;
+        }
+    }
+    for (std::size_t i = 3; i < code.size(); ++i) {
+        if (!IsDigit(code[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool AtEnd(std::istringstream& input) {
@@ -107,11 +127,15 @@ bool ReadCSVRow(const std::string& line, std::vector<std::string>& fields) {
 }
 
 bool ReadTime(const std::string& text, int& minutes) {
+    if (text.size()!= 5 || text[2] != ':') {
+        return false;
+    }
     int hour = 0;
     int minute = 0;
-    if (text.size() != 5 || text[2] != ':' ||
-        !ReadInteger(text.substr(0, 2), hour) ||
-        !ReadInteger(text.substr(3, 2), minute) || hour > 23 || minute > 59) {
+    if (!ReadInteger(text.substr(0, 2), hour) || hour > 23) {
+        return false;
+    }
+    if (!ReadInteger(text.substr(3, 2), minute) || minute > 59) {
         return false;
     }
     minutes = hour * 60 + minute;
@@ -156,10 +180,17 @@ std::string Graph::EdgeStatus(int from, int to) const {
 }
 
 bool Graph::ToggleEdgesClosure(const std::vector<std::pair<int, int>>& endpoints) {
+    if (endpoints.empty()) {
+        return false;
+    }
     std::set<std::size_t> indices;
     for (const auto& edge : endpoints) {
         const auto found = roadIndex.find(RoadKey(edge.first, edge.second));
-        if (found == roadIndex.end() || !indices.insert(found->second).second) {
+        if (found == roadIndex.end()) {
+            return false;
+        }
+        const bool added= indices.insert(found->second).second;
+        if (!added) {
             return false;
         }
     }
@@ -167,12 +198,15 @@ bool Graph::ToggleEdgesClosure(const std::vector<std::pair<int, int>>& endpoints
     for (const std::size_t index : indices) {
         roads[index].open = !roads[index].open;
     }
-    return !indices.empty();
+    return true;
 }
 
 bool Graph::IsConnected(int from, int to) const {
     if (!HasLocation(from) || !HasLocation(to)) {
         return false;
+    }
+    if (from==to) {
+        return true;
     }
     std::queue<int> pending;
     std::set<int> visited{from};
@@ -180,15 +214,19 @@ bool Graph::IsConnected(int from, int to) const {
     while (!pending.empty()) {
         const int current = pending.front();
         pending.pop();
-        if (current == to) {
-            return true;
-        }
         for (const std::size_t index : neighbors.at(current)) {
             const Road& road = roads[index];
-            const int next = OtherEnd(road, current);
-            if (road.open && visited.insert(next).second) {
-                pending.push(next);
+            if (!road.open) {
+                continue;
             }
+            const int next = OtherEnd(road, current);
+            if (!visited.insert(next).second) {
+                continue;
+            }
+            if (next == to) {
+                return true;
+            }
+            pending.push(next);
         }
     }
     return false;
@@ -314,16 +352,27 @@ bool CampusCompass::HasCourse(const std::string& code) const {
     return ValidCode(code) && courses.count(code) != 0;
 }
 
-bool CampusCompass::Insert(const std::string& name, const std::string& id, int residence, const std::vector<std::string>& codes) {
-    if (!ValidName(name) || !ValidID(id) || students.count(id) != 0 || !campus.HasLocation(residence)|| codes.empty()|| codes.size() > 6) {
+bool CampusCompass::Insert(const std::string& name, const std::string& id, int residence,
+                           const std::vector<std::string>& codes) {
+    if (!ValidName(name) || !ValidID(id)) {
+        return false;
+    }
+    if (students.count(id) != 0 || !campus.HasLocation(residence)) {
+        return false;
+    }
+    if (codes.empty()|| codes.size() > 6) {
         return false;
     }
     std::set<std::string> unique;
     for (const auto& code : codes) {
-        if (!HasCourse(code) || !unique.insert(code).second) {
+        if (!HasCourse(code)) {
+            return false;
+        }
+        if (!unique.insert(code).second) {
             return false;
         }
     }
+    // store the record only after every enrollment has passed validation.
     students.emplace(id, Student{name, residence, codes});
     return true;
 }
@@ -342,21 +391,26 @@ bool CampusCompass::DropClass(const std::string& id, const std::string& code) {
     if (enrolled == codes.end()) {
         return false;
     }
-    codes.erase(enrolled);
-    if (codes.empty()) {
+    if (codes.size() == 1) {
         students.erase(student);
+    } else {
+        codes.erase(enrolled);
     }
     return true;
 }
 
-bool CampusCompass::ReplaceClass(const std::string& id,const std::string& oldCode, const std::string& newCode) {
+bool CampusCompass::ReplaceClass(const std::string& id, const std::string& oldCode,
+                                 const std::string& newCode) {
     const auto student = students.find(id);
     if (student == students.end() || !HasCourse(oldCode) || !HasCourse(newCode)) {
         return false;
     }
     auto& codes = student->second.classes;
+    if (std::find(codes.begin(), codes.end(), newCode) != codes.end()) {
+        return false;
+    }
     const auto enrolled = std::find(codes.begin(), codes.end(), oldCode);
-    if (enrolled == codes.end()|| std::find(codes.begin(), codes.end(), newCode) != codes.end()) {
+    if (enrolled == codes.end()) {
         return false;
     }
     *enrolled = newCode;
@@ -365,7 +419,8 @@ bool CampusCompass::ReplaceClass(const std::string& id,const std::string& oldCod
 
 std::size_t CampusCompass::RemoveClass(const std::string& code) {
     std::size_t affected = 0;
-    for (auto student = students.begin(); student != students.end();) {
+    auto student = students.begin();
+    while (student != students.end()) {
         auto& codes = student->second.classes;
         const auto enrolled = std::find(codes.begin(), codes.end(), code);
         if (enrolled != codes.end()) {
@@ -374,21 +429,26 @@ std::size_t CampusCompass::RemoveClass(const std::string& code) {
         }
         if (codes.empty()) {
             student = students.erase(student);
-        } else {
-            ++student;
+            continue;
         }
+        ++student;
     }
     return affected;
 }
 
 void CampusCompass::PrintShortestEdges(const Student& student, std::ostream& output) const {
-    const Graph::Paths paths = campus.ShortestPaths(student.residence);
     auto codes = student.classes;
     std::sort(codes.begin(), codes.end());
-    output << "Time For Shortest Edges: "<< student.name << '\n';
+    const Graph::Paths paths = campus.ShortestPaths(student.residence);
+    output << "Time For Shortest Edges: " << student.name << '\n';
     for (const auto& code : codes) {
-        const auto distance = paths.distance.find(courses.at(code).location);
-        output << code << ": " << (distance == paths.distance.end() ? -1 : distance->second) << '\n';
+        const int location = courses.at(code).location;
+        const auto distance = paths.distance.find(location);
+        Graph::Time minutes= -1;
+        if (distance != paths.distance.end()) {
+            minutes = distance->second;
+        }
+        output << code << ": " << minutes << '\n';
     }
 }
 
